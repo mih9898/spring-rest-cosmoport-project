@@ -66,7 +66,6 @@ public class MyRestController {
     public Ship getShipByID(@PathVariable Long id) {
         Ship ship =  shipService.findShipByID(id);
         if (ship == null) {
-//            throw new ShipBadRequestException();
             throw new ShipNotFoundItemException();
         }
         return ship;
@@ -86,12 +85,18 @@ public class MyRestController {
         shipService.deleteShip(id);
     }
 
-    @PutMapping("ships/{id}")
+    @PostMapping("ships/{id}")
     public Ship updateShip(@PathVariable Long id, @RequestBody Ship ship) {
-        Ship updatedShip = shipService.updateShip(id, ship);
-        if (updatedShip == null) {
+
+        if (!isIdValid(id)) {
             throw new ShipBadRequestException();
         }
-        return updatedShip;
+        return shipService.updateShip(id, ship);
+    }
+
+    private Boolean isIdValid(Long id) {
+        return id != null &&
+                id == Math.floor(id) &&
+                id > 0;
     }
 }

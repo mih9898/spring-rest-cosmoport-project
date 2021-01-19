@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -49,13 +50,10 @@ public class ShipServiceImpl implements ShipService {
     @Override
     @Transactional
     public Ship findShipByID(Long id) {
-        if (id < 1) throw new ShipBadRequestException();
-        Ship ship = null;
-        Optional<Ship> optional = shipRepository.findById(id);
-        if(optional.isPresent()) {
-            ship = optional.get();
+        if (!shipRepository.existsById(id)) {
+            throw new ShipNotFoundItemException();
         }
-        return ship;
+        return shipRepository.findById(id).orElse(null);
     }
 
     @Override
@@ -66,63 +64,59 @@ public class ShipServiceImpl implements ShipService {
         return ships.size();
     }
 
+    @Transactional
     @Override
-    public Ship updateShip(Long id, Ship putShip) {
-        Ship updatedShip = findShipByID(id);
-        if (putShip.getName() != null) {
-            String name = putShip.getName();
-            if (name.length() > 50 || name.isEmpty()) {
-                return null;
+    public Ship updateShip( Long id, Ship newShip) {
+        Ship shipUpdate = findShipByID(id);
+
+        if (newShip == null || shipUpdate == null) {
+             throw new ShipNotFoundItemException();
+        }
+        if (newShip.getName() != null) {
+            if (newShip.getName().length() > 50 ||
+                    newShip.getName().isEmpty()) {
+               throw new ShipBadRequestException();
             }
-            updatedShip.setName(name);
+            shipUpdate.setName(newShip.getName());
         }
-
-        if (putShip.getPlanet() != null) {
-            String planet = putShip.getPlanet();
-            if (planet.length() > 50 || planet.isEmpty()) {
-                return null;
+        if (newShip.getPlanet() != null) {
+            if (newShip.getPlanet().length() > 50 ||
+                    newShip.getPlanet().isEmpty()) {
+                 throw new ShipBadRequestException();
             }
-            updatedShip.setPlanet(planet);
+            shipUpdate.setPlanet(newShip.getPlanet());
         }
-
-        if (putShip.getShipType() != null) {
-            ShipType shipType = putShip.getShipType();
-            updatedShip.setShipType(shipType);
+        if (newShip.getShipType() != null) {
+            shipUpdate.setShipType(newShip.getShipType());
         }
-
-        if (putShip.getProdDate() != null) {
-            Date prodDate = putShip.getProdDate();
-            if (!(isShipYearInBorders(prodDate))) {
-                return null;
+        if (newShip.getProdDate() != null) {
+            if (newShip.getProdDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate().getYear() < 2800 ||
+                    newShip.getProdDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate().getYear() > 3019) {
+                throw new ShipBadRequestException();
             }
-            updatedShip.setProdDate(prodDate);
+            shipUpdate.setProdDate(newShip.getProdDate());
         }
-
-        if (putShip.getUsed() != null) {
-            Boolean isUsed = putShip.getUsed();
-            updatedShip.setUsed(isUsed);
+        if (newShip.getUsed() != null) {
+            shipUpdate.setUsed(newShip.getUsed());
         }
-
-        if (putShip.getSpeed() != null) {
-            Double speed = roundToHundreds(putShip.getSpeed());
-            if (speed < 0.01 || speed > 0.99) {
-                return null;
+        if (newShip.getSpeed() != null) {
+            if (newShip.getSpeed() < 0.01d ||
+                    newShip.getSpeed() > 0.99d) {
+                throw new ShipBadRequestException();
             }
-            updatedShip.setSpeed(speed);
+            shipUpdate.setSpeed(newShip.getSpeed());
+        }
+        if (newShip.getCrewSize() != null) {
+            if (newShip.getCrewSize() < 1 ||
+                    newShip.getCrewSize() > 9999) {
+                throw new ShipBadRequestException();
+            }
+            shipUpdate.setCrewSize(newShip.getCrewSize());
         }
 
-        if (putShip.getCrewSize() != null) {
-            Integer crewSize = putShip.getCrewSize();
-            if (crewSize < 1 || crewSize > 9999) {
-                return null;
-            }
-            updatedShip.setCrewSize(crewSize);
-        }
-        updatedShip.setRating(calculateRating(updatedShip.getSpeed(),
-                updatedShip.getUsed(), updatedShip.getProdDate()));
-        return shipRepository.save(updatedShip);
+        shipUpdate.setRating(calculateRating(shipUpdate));
+        return shipRepository.save(shipUpdate);
     }
-
     @Override
     public Ship createShip(Ship ship) {
         if (
@@ -147,8 +141,7 @@ public class ShipServiceImpl implements ShipService {
             ship.setUsed(false);
         }
         ship.setSpeed(roundToHundreds(ship.getSpeed()));
-        ship.setRating(calculateRating(ship.getSpeed(),
-                ship.getUsed(), ship.getProdDate()));
+        ship.setRating(calculateRating(ship));
         return shipRepository.save(ship);
     }
 
@@ -164,13 +157,17 @@ public class ShipServiceImpl implements ShipService {
         shipRepository.deleteById(id);
     }
 
-    private Double calculateRating(Double speed, Boolean used, Date prodDate) {
-        double cof = used ? 1 : 0.5;
-        Calendar cal = Calendar.getInstance();
-        cal.setTime(prodDate);
-        double rating = (80 * speed * cof) / (CURRENT_YEAR - Calendar.YEAR + 1);
+    private Double calculateRating(Ship ship) {
+        double speed = ship.getSpeed();
+        double coefficientUsed = ship.getUsed() ? 0.5d : 1.0d;
+        int currentYear = 3019;
+        int productionDate = ship.getProdDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate().getYear();
+        double rating = (80 * speed * coefficientUsed) / (double) (currentYear - productionDate + 1);
         return roundToHundreds(rating);
     }
+
+
+
 
     private boolean isShipYearInBorders(Date prodDate) {
         Calendar calDate = Calendar.getInstance();
