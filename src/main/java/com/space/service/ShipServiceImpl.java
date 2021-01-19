@@ -50,7 +50,9 @@ public class ShipServiceImpl implements ShipService {
     @Override
     @Transactional
     public Ship findShipByID(Long id) {
-        if (!shipRepository.existsById(id)) {
+        if (id < 1) {
+            throw new ShipBadRequestException();
+        } else if (!shipRepository.existsById(id)) {
             throw new ShipNotFoundItemException();
         }
         return shipRepository.findById(id).orElse(null);
